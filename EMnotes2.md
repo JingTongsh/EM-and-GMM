@@ -2,8 +2,12 @@
 
 ## 〇、一些说明
 
-2022.2.20更新。首发于知乎：
+首发于知乎：
 <https://zhuanlan.zhihu.com/p/431084480>。
+
+Bishop的《Pattern Recognition and Machine Learning》（下面简称PRML）和李航的《统计学习方法》都介绍了EM（Expectation Maximization）算法。
+这两本书给出了不同的推导方法，又都使用了Gaussian混合模型（Gaussian Mixture Model，GMM）作为例子。
+这里给出详细推导及解释，并附上Python代码实现。
 
 使用记号如下，与 PRML 基本一致：
 
@@ -13,17 +17,20 @@
 * $\mathbb E [\cdot]$：数学期望
 * $p(\cdot)$：概率或概率密度
 
-看一些又长又复杂的公式时，容易忘记的概率论基础知识：
+反复用到的概率论知识：
 
-* 随机变量的函数的数学期望是以概率或概率密度函数为权的加权和
-* 联合 = 边缘 × 条件
-* 联合 -- 积分（求和）--> 边缘
+* 随机变量的函数的数学期望是以概率（密度）为权的加权和
+    $$\mathbb{E}[g(z)] = \sum_z p(z)g(z)$$
+* 联合概率是边缘概率和条件概率的乘积
+    $$p(x, z) = p(x|z)p(z) = p(z|x)p(x)$$
+* 联合概率求和得边缘概率
+    $$p(z) = \sum_x p(x, z)$$
 
-其中后两条几乎被 PRML 奉为圭臬，分别称为“product rule”和“sum rule”，在1.2节帮读者复习概率论时专门列出来强调。
+其中后两条被PRML反复强调，分别称为“product rule”和“sum rule”。
 
 ## 六、知识准备：Gaussian 混合模型
 
-![p2fig1](em-figures/em-p2-fig1.png)
+![p2fig1](figures/em-p2-fig1.png)
 
 Gaussian Mixture Model，简称 GMM。EM算法的一个经典的例子就是其在 GMM中的应用，即 GMM-EM 算法。该算法求得 GMM 的最大似然解，并将其用于聚类。下面用两种不同的方式介绍 GMM，它们是相互等价的。
 
@@ -33,9 +40,9 @@ Gaussian Mixture Model，简称 GMM。EM算法的一个经典的例子就是其�
 
 模型的参数如下，它们放在一起就是参数“集合” $\pmb\theta=(\pmb\mu,\mathbf\Sigma,\pmb\pi)$：
 
-* $K$ 个均值 $\pmb\mu_1,\cdots, \pmb\mu_K$，都是 $D$ 维列向量；它们的集合记为 $\pmb\mu$。
-* $K$ 个协方差矩阵 $\mathbf\Sigma_1,\cdots$, $\mathbf\Sigma_K$，都是 $D$ 行 $D$ 列；它们的集合记为 $\mathbf\Sigma$。
-* 混合系数 $\pmb\pi = (\pi_1,\cdots,\pi_K)^{\rm T}$ ， $K$ 维列向量，非负，各分量之和为 $1$。
+* $K$ 个均值 $\pmb\mu_1,\cdots, \pmb\mu_K$，都是 $D$ 维列向量，它们的集合记为 $\pmb\mu$。
+* $K$ 个协方差矩阵 $\mathbf\Sigma_1,\cdots$, $\mathbf\Sigma_K$，都是 $D$ 行 $D$ 列矩阵，它们的集合记为 $\mathbf\Sigma$。
+* 混合系数 $\pmb\pi = (\pi_1,\cdots,\pi_K)^{\rm T}$ ， $K$ 维列向量，非负，各元素之和为 $1$。
 
 定义 GMM 的概率密度函数
 
@@ -47,7 +54,7 @@ p(\pmb x | \pmb\theta)
 \end{aligned}
 $$
 
-这个分布当然是归一化的。其中 $\forall 1\le k\le K$，
+其中 $\forall k = 1,\cdots, K$，
 
 $$
 \mathcal N(\pmb x | \pmb\mu_k, \mathbf\Sigma_k)
@@ -81,7 +88,7 @@ $$
 
 概率图模型如下，该图展示了观测变量、隐变量、参数之间的依赖关系：
 
-![p2fig2](em-figures/em-p2-fig2.png)
+![p2fig2](figures/em-p2-fig2.png)
 
 隐变量 $\pmb z$ 的分布由参数 $\pmb\pi$ 决定：
 
@@ -103,24 +110,26 @@ $$
 
 GMM-EM 算法步骤总结如下：
 
->1. 初始化参数
-$$
-\pmb\mu_k^{{\rm old}}\quad (k=1,\cdots,K)\\ \mathbf\Sigma_k^{{\rm old}}\quad (k=1,\cdots,K)\\ \pmb\pi^{{\rm old}}\\
-$$
->2. E step 更新后验分布
+1. 初始化参数 $\pmb\mu_k^{{\rm old}},\mathbf\Sigma_k^{{\rm old}}, \pi_k^{{\rm old}}\ (k=1,\cdots,K)$，这些参数的初值可以由 $K$-means 算法给定。
+
+2. E step 更新后验分布
 $$
 \gamma_{nk}\gets \cfrac{\pi_k\mathcal N(\pmb x_n | \pmb\mu_k, \mathbf\Sigma_k)}{\sum_{j=1}^K \pi_j\mathcal N(\pmb x_n | \pmb\mu_j, \mathbf\Sigma_j)}\quad (n=1,\cdots,N;k=1,\cdots,K)
 $$
->3. M step 更新参数
+3. M step 更新参数
 $$
 \begin{aligned}
-\pmb\mu_k^{{\rm new}}&\gets \cfrac{1}{N_k} \sum_{n=1}^N \gamma_{nk} \pmb x_n\quad (k=1,\cdots,K)\\
-\mathbf\Sigma_k^{{\rm new}}&\gets \cfrac{1}{N_k} \sum_{n=1}^N \gamma_{nk} (\pmb x_n - \pmb\mu_k) (\pmb x_n - \pmb\mu_k)^{\rm T}\quad (k=1,\cdots,K)\\
+\pmb\mu_k^{{\rm new}}&\gets \cfrac{1}{N_k} \sum_{n=1}^N \gamma_{nk} \pmb x_n\\
+\mathbf\Sigma_k^{{\rm new}}&\gets \cfrac{1}{N_k} \sum_{n=1}^N \gamma_{nk} (\pmb x_n - \pmb\mu_k) (\pmb x_n - \pmb\mu_k)^{\rm T}\\
 \pi_k^{{\rm new}}&\gets \cfrac{N_k}{N} \quad (k=1,\cdots,K) \end{aligned}
 $$
->4. 检查是否收敛，否则令
+4. 检查是否收敛，如果没有收敛，则令
 $$
-\begin{aligned} \pmb\mu_k^{{\rm old}}&\gets\pmb\mu_k^{{\rm new}}\quad (k=1,\cdots,K)\\ \mathbb\Sigma_k^{{\rm old}}&\gets\mathbb\Sigma_k^{{\rm new}}\quad (k=1,\cdots,K)\\ \pmb\pi^{{\rm old}}&\gets\pmb\pi^{{\rm new}} \end{aligned}
+\begin{aligned}
+\pmb\mu_k^{{\rm old}}&\gets\pmb\mu_k^{{\rm new}}\\
+\mathbf\Sigma_k^{{\rm old}}&\gets\mathbf\Sigma_k^{{\rm new}}\\
+\pi_k^{{\rm old}}&\gets\pi_k^{{\rm new}}\quad (k=1,\cdots,K)
+\end{aligned}
 $$
 随后返回 E step。
 其中定义了后验分布
@@ -132,7 +141,7 @@ $$
 $$
 N_k = \sum_{n=1}^N \gamma_{nk}\quad (k=1,\cdots,K)
 $$
->5. 使用EM算法求得 GMM 的最大似然解之后，可以更进一步，对每个 $\pmb x_n$，估计出它最可能来自哪个类别
+5. 使用EM算法求得 GMM 的最大似然解之后，可以更进一步，对每个 $\pmb x_n$，估计出它最可能来自哪个类别
 $$
 \hat{C}_n = \text{argmax}_k \gamma_{nk}
 $$
@@ -140,9 +149,9 @@ $$
 
 ## 八、与 $K$-means 算法的关系
 
-![p2fig3](em-figures/em-p2-fig3.png)
+![p2fig3](figures/em-p2-fig3.png)
 
-![p2fig4](em-figures/em-p2-fig4.png)
+![p2fig4](figures/em-p2-fig4.png)
 
 PRML 将 GMM-EM 与 $K$-means 算法联系起来，很方便直观理解，如图3、图4所示。
 两者有对应的、类似的 E step 和 M step。
@@ -152,7 +161,7 @@ $K$-means 是 EM 的特殊情况。
 
 ## 九、GMM-EM 算法更新公式的推导
 
-### （一）方法一（见于 PRML 9.2.2节）
+### （一）方法一（PRML 9.2.2节）
 
 一副不知何为EM算法的样子，直接优化对数似然，最优解相互耦合，迭代重估计。但结果与优化下界 $\mathcal Q$ 一致。PRML 用这个例子引入EM算法。
 
@@ -173,8 +182,6 @@ $$
 **（i）** 关于 $\pmb\mu_k$ 最大化对数似然
 
 令对数似然 $\ln p(\mathbf X | \pmb\mu, \mathbf \Sigma, \pmb\pi)$ 对 $\pmb\mu_k$ 偏导为零：
-
-我算的偏导跟 PRML 不一样，协方差矩阵似乎要求逆…… 但非奇异矩阵会消掉，不影响更新公式。
 
 $$
 \begin{aligned} \cfrac{\partial}{\partial \pmb\mu_k} \ln p(\mathbf X | \pmb\mu, \mathbf \Sigma, \pmb\pi)
@@ -202,6 +209,7 @@ $$
 直观解释：它是所有数据点的加权和（质心），以第 $k$ 类的“责任”  $\gamma_{nk}$ 为权（质量）。
 
 **（ii）** 关于 $\mathbf\Sigma_k$ 最大化对数似然
+
 该步必须在更新 $\pmb\mu_k$ 之后。令对数似然 $\ln p(\mathbf X | \pmb\mu, \mathbf \Sigma, \pmb\pi)$ 对 $\mathbf\Sigma_k$ 偏导为零：
 
 $$
@@ -222,7 +230,7 @@ $$
 
 **（iii）** 关于 $\pi_k$ 最大化对数似然
 
-有限制，使用 Lagrange multipliers。PRML 只考虑了一个限制 $\sum_{k=1}^K \pi_k = 1$。
+这是有限制的优化，使用 Lagrange multipliers。PRML 只考虑了一个限制 $\sum_{k=1}^K \pi_k = 1$。
 
 Lagrange 函数为
 
@@ -265,7 +273,7 @@ $$
 * $\gamma_{nk}$ 单独在 E step 更新；
 * 参数在 M step 更新。参数之间其实还有耦合，更新 $\mathbf\Sigma$ 要用到 $\pmb\mu$，于是则按照惯例，先更新 $\pmb\mu$，后更新 $\mathbf\Sigma$。
 
-### （二）方法二（见于 PRML 9.3.1节、《统计学习方法》9.3节，略微改动）
+### （二）方法二（PRML 9.3.1节，《统计学习方法》9.3节）
 
 根据EM算法的定义，优化 $\mathcal Q(\pmb\theta,\pmb\theta^{{\rm old}})$，得参数更新公式。
 

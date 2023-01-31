@@ -2,8 +2,12 @@
 
 ## 〇、一些说明
 
-2022.2.20更新。首发于知乎：
+首发于知乎：
 <https://zhuanlan.zhihu.com/p/423524261>。
+
+Bishop的《Pattern Recognition and Machine Learning》（下面简称PRML）和李航的《统计学习方法》都介绍了EM（Expectation Maximization）算法。
+这两本书给出了不同的推导方法，又都使用了Gaussian混合模型（Gaussian Mixture Model，GMM）作为例子。
+这里给出详细推导及解释，并附上Python代码实现。
 
 使用记号如下，与 PRML 基本一致：
 
@@ -13,21 +17,24 @@
 * $\mathbb E [\cdot]$：数学期望
 * $p(\cdot)$：概率或概率密度
 
-看一些又长又复杂的公式时，容易忘记的概率论基础知识：
+反复用到的概率论知识：
 
-* 随机变量的函数的数学期望是以概率或概率密度函数为权的加权和
-* 联合 = 边缘 × 条件
-* 联合 -- 积分（求和）--> 边缘
+* 随机变量的函数的数学期望是以概率（密度）为权的加权和
+    $$\mathbb{E}[g(z)] = \sum_z p(z)g(z)$$
+* 联合概率是边缘概率和条件概率的乘积
+    $$p(x, z) = p(x|z)p(z) = p(z|x)p(x)$$
+* 联合概率求和得边缘概率
+    $$p(z) = \sum_x p(x, z)$$
 
-其中后两条几乎被 PRML 奉为圭臬，分别称为“product rule”和“sum rule”，在1.2节帮读者复习概率论时专门列出来强调。
+其中后两条被PRML反复强调，分别称为“product rule”和“sum rule”。
 
 ## 一、EM算法的作用
 
-用于含有隐变量的概率模型，求最大似然解。它是机器学习领域的经典算法。
+用于含有隐变量的概率模型，求最大似然解。
 
 ## 二、EM算法步骤总结（见于 PRML 9.3节）
 
->1. 初始化 $\pmb\theta^{{\rm old}}$
+>1. 初始化参数 $\pmb\theta^{{\rm old}}$
 >2. **E step**：计算后验概率分布 $p(\mathbf Z | \mathbf X, \pmb\theta^{{\rm old}})$
 >3. **M step**：更新参数 $\pmb\theta^{{\rm new}} = \text{argmax}_{\pmb\theta} \mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$
 >4. 检查是否收敛，如未收敛则令 $\pmb\theta^{{\rm old}} \gets \pmb\theta^{{\rm new}}$，随后返回步骤2
@@ -47,101 +54,34 @@ $$
 * 注1：E step 的另一种说法（《统计学习方法》9.1.1节）是计算 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$，这两种说法差别不大，因为 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 表达式中含有后验概率 $p(\mathbf Z | \mathbf X, \pmb\theta^{{\rm old}})$。
 * 注2：$\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 是对数似然 $\ln p(\mathbf  X | \pmb\theta)$ 的下界。（在第三、四部分证明）
 * 注3：优化下界 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 会有优化对数似然的效果。（在第三、四部分证明）
-* 注4：优化 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 比优化对数似然更简单。理由如下：
-$p(\mathbf X|\pmb\theta)$ 被称为不完全数据集 $\mathbf X$ 的似然， $p(\mathbf X, \mathbf Z | \pmb\theta)$ 被称为完全数据集 $\{\mathbf X, \mathbf Z\}$ 的似然，尽管这种称谓与EM算法的关联并不明显。它们之间的关系是，联合分布求和（积分）可得边缘分布：
-$$
-p(\mathbf X | \pmb\theta) = \sum_{\mathbf Z} p(\mathbf X, \mathbf Z | \pmb\theta)
-$$
-在含有隐变量的概率模型中，往往是先写出联合分布，再像这样求和（积分）得到边缘分布。两边同取对数，得
-$$
-\ln p(\mathbf X | \pmb\theta) = \ln \left(\sum_{\mathbf Z} p(\mathbf X, \mathbf Z | \pmb\theta)\right)
-$$
-这就是原本需要最大化的对数似然的表达式，但对数内有求和，不方便求导、优化。而在下界 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 的表达式中，对数内没有求和，方便求导、优化。
+* 注4：优化 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 比优化对数似然更简单。这是因为对数似然 $\ln p(\mathbf X | \pmb\theta) = \ln \left(\sum_{\mathbf Z} p(\mathbf X, \mathbf Z | \pmb\theta)\right)$ 在对数内有求和，不方便求导、优化；而在下界 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 的表达式中，对数内没有求和，方便求导、优化。
 
 ## 三、EM算法的正确性（PRML 版本）
 
 主要问题： $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 为什么是对数似然的下界？它是从何而来的？优化它为什么会达到优化对数似然的效果？
 
-### （一）下界 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 从何而来（见于9.3节）
+### （一）下界 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 从何而来（PRML 9.3节）
 
-书中提到，与其优化对数似然，不如优化它的下界。一通放缩就得到了下界 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$。
-
-（A）简略版：
+PRML提到，与其优化对数似然，不如优化它的下界。一通放缩就得到了下界 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$。
 
 $$
 \begin{aligned}
 \ln p(\mathbf X | \pmb\theta)
-&= \ln\left(\sum_{\mathbf Z} p(\mathbf X, \mathbf Z | \pmb\theta)\right)\\ &\ge \ln \mathbb E_{\mathbf Z} [p(\mathbf X, \mathbf Z | \pmb\theta)]\\
+&= \ln\left(\sum_{\mathbf Z} p(\mathbf X, \mathbf Z | \pmb\theta)\right)\\
+&\ge \ln\left(\sum_{\mathbf Z} p(\mathbf Z | \mathbf X,\pmb\theta^{{\rm old}}) p(\mathbf X, \mathbf Z | \pmb\theta)\right)\\
+&= \ln \mathbb E_{\mathbf Z} [p(\mathbf X, \mathbf Z | \pmb\theta)]\\
 &\ge \mathbb E_{\mathbf Z} \left[\ln p(\mathbf X, \mathbf Z | \pmb\theta)\right]\\
 &= \mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})
 \end{aligned}
 $$
 
-其中第二个不等号是 Jensen's inequality。关于 $\mathbf Z$ 求期望时，使用估计的后验概率 $p(\mathbf Z | \mathbf X,\pmb\theta^{{\rm old}})$，即
-
-$$
-\begin{aligned}
-\mathbb E_{\mathbf Z} [f(\mathbf Z)]
-&\triangleq \mathbb E_{\mathbf Z\sim p\left(\mathbf Z | \mathbf X,\pmb\theta^{{\rm old}}\right)} [f(\mathbf Z)]\\
-&= \sum_{\mathbf Z} p(\mathbf Z | \mathbf X,\pmb\theta^{{\rm old}}) f(\mathbf Z)
-\end{aligned}
-$$
-
-（B）详细版：
-
-首先写出对数似然的表达式
-
-$$
-\ln p(\mathbf X | \pmb\theta) = \ln\left(\sum_{\mathbf Z} p(\mathbf X, \mathbf Z | \pmb\theta)\right)
-$$
-
-这一步使用了“sum rule”，即边缘分布等于联合分布的求和。这是给定含有隐变量的概率模型后，计算对数似然所用的表达式。当然，它并不方便直接优化，因为求导复杂。
-
-接着做一步放缩
-
-$$
-\ln\left(\sum_{\mathbf Z} p(\mathbf X, \mathbf Z | \pmb\theta)\right)\ge \ln\left(\sum_{\mathbf Z} p(\mathbf Z | \mathbf X,\pmb\theta^{{\rm old}}) p(\mathbf X, \mathbf Z | \pmb\theta)\right)
-$$
-
-这一步成立是因为 $p(\mathbf Z | \mathbf X,\pmb\theta^{{\rm old}})\le 1$ （隐变量 $\mathbf Z$ 是离散的，此处 $p$ 是概率）。不等号右侧对数内的是随机变量 $\mathbf Z$ 的函数 $p(\mathbf X, \mathbf Z | \pmb\theta)$ 以概率分布 $p(\mathbf Z | \mathbf X, \pmb\theta^{{\rm old}})$ 为权的加权和，也就是该函数的数学期望
-
-$$
-\ln\left(\sum_{\mathbf Z} p(\mathbf Z | \mathbf X,\pmb\theta^{{\rm old}}) p(\mathbf X, \mathbf Z | \pmb\theta)\right) = \ln \mathbb E_{\mathbf Z} [p(\mathbf X, \mathbf Z | \pmb\theta)]
-$$
-
-由于对数是一个凹函数，根据Jensen's inequality可以得到，期望的对数大于等于对数的期望：
-
-$$
-\ln \mathbb E[\varphi(\mathbf Z)]\ge \mathbb E[\ln\varphi(\mathbf Z)]
-$$
-
-应用到上式，得
-
-$$
-\begin{aligned}
-\ln \mathbb E_{\mathbf Z}[p(\mathbf X, \mathbf Z | \pmb\theta)]
-&\ge \mathbb E_{\mathbf Z}[\ln p(\mathbf X, \mathbf Z | \pmb\theta)]\\
-&= \mathcal Q(\pmb\theta,\pmb\theta^{\rm old})
-\end{aligned}
-$$
-
-下界 $\mathcal Q(\pmb\theta,\pmb\theta^{\rm old})$ 正是在这里定义出来的。当然，可以把数学期望再展开写成求和的形式
-
-$$
-\begin{aligned}
-\mathcal Q(\pmb\theta,\pmb\theta^{\rm old})
-&= \mathbb E_{\mathbf Z}[\ln p(\mathbf X, \mathbf Z | \pmb\theta)]\\
-&= \sum_{\mathbf Z} p(\mathbf Z | \mathbf X,\pmb\theta^{{\rm old}}) \ln p(\mathbf X, \mathbf Z | \pmb\theta)
-\end{aligned}
-$$
+其中第一个不等号是因为 $p(\mathbf Z | \mathbf X,\pmb\theta^{{\rm old}})\le 1$（隐变量 $\mathbf Z$ 是离散的，此处 $p$ 是概率）；第二个不等号是 Jensen's inequality，期望的对数不小于对数的期望。
 
 由此可见 $\mathcal Q$ 是对数似然的下界。
 
-这一段并没有说明优化下界 $\mathcal Q$ 为什么能达到优化对数似然的效果。
+### （二）优化下界 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 为何会有优化对数似然的效果（PRML 9.4节）
 
-### （二）优化下界 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 为何会有优化对数似然的效果（见于9.4节）
-
-将对数似然 $\ln p(\mathbf X | \pmb\theta)$ 分解为下界（ELBO） $\mathcal L(q,\pmb\theta)$ 与KL散度 $\text{KL}(q||p)$ 之和。E step 计算后验概率分布其实是令 $q(\mathbf Z)=p(\mathbf Z | \pmb\theta^{{\rm old}})$，使得 $\text{KL} (q||p)$ 减小至 $0$，同时下界 $\mathcal L(q,\pmb\theta)$ 增大至对数似然；M step 最大化 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$，使得 $\mathcal L(q,\pmb\theta), \text{KL}(q||p)$ 和 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 全部增大。
+将对数似然 $\ln p(\mathbf X | \pmb\theta)$ 分解为证据下界（Evidence Lower Bound，ELBO) $\mathcal L(q,\pmb\theta)$ 与KL散度（Kullback-Leibler Divergence） $\text{KL}(q||p)$ 之和。E step 计算后验概率分布其实是令 $q(\mathbf Z)=p(\mathbf Z | \pmb\theta^{{\rm old}})$，使得 $\text{KL} (q||p)$ 减小至 $0$，同时下界 $\mathcal L(q,\pmb\theta)$ 增大至对数似然；M step 关于参数 $\pmb\theta$ 最大化 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$，使得 $\mathcal L(q,\pmb\theta), \text{KL}(q||p)$ 和 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 全部增大。
 
 下面分5个部分详细介绍：
 
@@ -222,8 +162,8 @@ $$
 
 将 $q(\mathbf Z)$ 视作对后验分布 $p\left(\mathbf Z | \mathbf X, \pmb\theta\right)$ 的估计。
 
->**E step**：固定 $\pmb\theta^{{\rm old}}$ ，更新 $q(\mathbf Z)$。关于 $q(\mathbf Z)$ 最大化 $\mathcal L(q, \pmb\theta^{{\rm old}})$，得最优解 $q(\mathbf Z) = p(\mathbf Z | \mathbf X, \pmb\theta^{{\rm old}})$。
->**M step**：固定 $q(\mathbf Z)$ ，更新 $\pmb \theta$。关于 $\pmb\theta$ 最大化 $\mathcal L(q, \pmb\theta)$，最优解 $\pmb\theta^{{\rm new}}$ 因模型而异。
+* **E step**：固定 $\pmb\theta^{{\rm old}}$ ，更新 $q(\mathbf Z)$。关于 $q(\mathbf Z)$ 最大化 $\mathcal L(q, \pmb\theta^{{\rm old}})$，得最优解 $q(\mathbf Z) = p(\mathbf Z | \mathbf X, \pmb\theta^{{\rm old}})$。
+* **M step**：固定 $q(\mathbf Z)$ ，更新 $\pmb \theta$。关于 $\pmb\theta$ 最大化 $\mathcal L(q, \pmb\theta)$，最优解 $\pmb\theta^{{\rm new}}$ 因模型而异。
 
 **part 4**：更新过程的详细描述
 
@@ -243,7 +183,7 @@ $$
 
 可以将KL散度视作从下界 $\mathcal L$ 到对数似然的“距离”。起初，此“距离”为正，如图1所示。
 
-![p1fig1](em-figures/em-p1-fig1.png)
+![p1fig1](figures/em-p1-fig1.png)
 
 **E step**：固定 $\pmb\theta^{{\rm old}}$，更新 $q(\mathbf Z)$。关于 $q(\mathbf Z)$ 最大化下界 $\mathcal L$：
 
@@ -263,7 +203,7 @@ $$
 \mathcal L\left(q, \pmb\theta^{{\rm old}}\right) = \ln p(\mathbf X | \pmb\theta^{{\rm old}})
 $$
 
-![p1fig2](em-figures/em-p1-fig2.png)
+![p1fig2](figures/em-p1-fig2.png)
 
 顺带一提，此时 $\mathcal L(q, \pmb\theta)$ 和 $\mathcal Q(\pmb\theta, \pmb\theta^{{\rm old}})$ 只相差一个与 $\pmb\theta$ 无关的常数项，并且此常数项是 $q(\mathbf Z)$ 的负熵
 
@@ -297,14 +237,14 @@ $$
 
 **part 5**：总结
 
-可见，E step 和 M step 都使下界 $\mathcal L$ 增大，而 M step 还使对数似然增大。这证明了EM算法每次迭代都使对数似然增大。另外，这里提到的泛函和变分优化的方法与 PRML 下一章衔接紧密。
+可见，E step 和 M step 都使下界 $\mathcal L$ 增大，而 M step 还使对数似然增大。这证明了EM算法每次迭代都使对数似然增大。另外，这里提到的泛函和变分优化的方法与 PRML 下一章的变分推断衔接紧密。
 
 ## 四、EM算法的正确性（《统计学习方法》版本）
 
 主要问题： $\mathcal Q(\pmb\theta, \pmb\theta^{(i)})$ 为什么是对数似然的下界？它是从何而来的？优化它为什么会达到优化对数似然的效果？
-说明：记号与原文有所不同，在加粗、花体、大小写等方面与 PRML 保持一致。
+说明：几乎照书抄，但记号与原文有所不同，在加粗、花体、大小写等方面与 PRML 保持一致。
 
-### （一）方法一（见于9.1.2节）
+### （一）方法一（《统计学习方法》9.1.2节）
 
 希望极大化对数似然
 
@@ -356,9 +296,9 @@ $$
 * 推导时没有提到泛函，这一点显得比 PRML 更为亲民。
 * 这一段不仅证明了 $\mathcal Q(\pmb\theta, \pmb\theta^{(i)})$ 是对数似然的下界，而且还成功说明了优化下界 $\mathcal Q(\pmb\theta, \pmb\theta^{(i)})$ 为什么能达到优化对数似然的效果。
 
-### （二）方法二（见于9.2节）
+### （二）方法二（《统计学习方法》9.2节）
 
-定理9.1：设 $p(\mathbf X | \pmb\theta)$ 为观测数据的似然函数，$\pmb\theta^{(i)}(i=1,2,\cdots)$ 为EM算法得到的参数估计序列， $p(\mathbf X | \pmb\theta^{(i)})(i=1,2,\cdots)$ 为对应的似然函数序列，则 $p(\mathbf X | \pmb\theta^{(i)})$ 是单调递增的，即
+《统计学习方法》9.2节定理9.1：设 $p(\mathbf X | \pmb\theta)$ 为观测数据的似然函数，$\pmb\theta^{(i)}(i=1,2,\cdots)$ 为EM算法得到的参数估计序列， $p(\mathbf X | \pmb\theta^{(i)})(i=1,2,\cdots)$ 为对应的似然函数序列，则 $p(\mathbf X | \pmb\theta^{(i)})$ 是单调递增的，即
 
 $$
 p(\mathbf X | \pmb\theta^{(i+1)})\ge p(\mathbf X | \pmb\theta^{(i)})
@@ -425,9 +365,9 @@ $$
 
 总结一下，关于EM算法的正确性，PRML 分为两部分，更为冗长，并且书中标题并不明显，并且提到了泛函和变分最优化。《统计学习方法》用了两种方法来证明，两种方法都还算简洁。
 
-## 五、EM算法的收敛性
+## 五、EM算法的收敛性（《统计学习方法》9.2节）
 
-《统计学习方法》9.2节，定理9.2：设 $L(\pmb\theta) = \ln p(\mathbf X|\pmb\theta)$ 为观测数据的对数似然函数，$\pmb\theta^{(i)}(i=1,2,\cdots)$ 为EM算法得到的参数估计序列，$L(\pmb\theta^{(i)})(i=1,2,\cdots)$ 为对应的对数似然函数序列。
+《统计学习方法》9.2节定理9.2：设 $L(\pmb\theta) = \ln p(\mathbf X|\pmb\theta)$ 为观测数据的对数似然，$\pmb\theta^{(i)}(i=1,2,\cdots)$ 为EM算法得到的参数估计序列，$L(\pmb\theta^{(i)})(i=1,2,\cdots)$ 为对应的对数似然函数序列。
 （1）如果 $p(\mathbf X|\pmb\theta)$ 有上界， $L\left(\pmb\theta^{(i)}\right) = \ln p(\mathbf X|\pmb\theta^{(i)})$ 收敛到某一值 $L^{*}$；
 （2）在函数 $\mathcal Q(\pmb\theta,\pmb\theta')$ 与 $L(\pmb\theta)$ 满足一定条件下，由EM算法得到的参数估计序列 $\pmb\theta^{(i)}$ 的收敛值 $\pmb\theta^{*}$ 是 $L(\pmb\theta)$ 的稳定点。
 
